@@ -27,11 +27,16 @@ jobs:
           restore-keys: ${{ runner.os }}-cargo-release-
       - name: Build project
         run: cargo build --release
-      - name: Upload artifacts
+      - name: Upload client
         uses: actions/upload-artifact@v2
         with:
           name: makao-online-${{ runner.os }}
-          path: ./target/release/makao-online*
+          path: ./target/release/client*
+      - name: Upload server
+        uses: actions/upload-artifact@v2
+        with:
+          name: makao-online-${{ runner.os }}
+          path: ./target/release/server*
       - name: Run tests
         run: cargo test --verbose
       - name: Run linter
@@ -55,15 +60,20 @@ jobs:
         with:
           name: makao-online-${{ runner.os }}
           path: ./target/
-      - name: Clean .d file
+      - name: Clean .d files
         working-directory: ./target/
         run: |
-          rm makao-online.d
-      - name: Rename macOS artifact
+          rm *.d
+      - name: Clean .pdb files
+        if: runner.os == 'Windows'
+        working-directory: ./target/
+        run: |
+          rm *.pdb
+      - name: Rename macOS artifacts
         if: runner.os == 'macOS'
         working-directory: ./target/
         run: |
-          mv makao-online makao-online-macos
+          mv client client-macos && mv server server-macos
       - name: Create release
         uses: ncipollo/release-action@v1
         with:
