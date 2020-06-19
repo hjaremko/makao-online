@@ -5,3 +5,12 @@ authors = ["Hubert Jaremko <hjaremko@outlook.com>"]
 edition = "2018"
 
 [dependencies]
+log = { version = "0.4", features = ["max_level_debug", "release_max_level_info"] }
+termcolor = "1.1"
+tokio = { version = "0.2", features = ["full"] }
+
+[lib]
+name = "logger"
+path = "src/logger.rs"
+edition = "2018"
+crate-type = ["lib"]
