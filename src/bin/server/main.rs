@@ -1,4 +1,5 @@
 mod network;
+mod server;
 
 use crate::network::{handle_connections, Broadcaster};
 use log::{info, LevelFilter};
@@ -18,6 +19,12 @@ pub async fn main() -> BoxResult {
     info!("Makao Online Server");
 
     let server_addr = get_server_addr();
+    let player_amount = env::args()
+        .nth(2)
+        .unwrap_or_else(|| "2".to_string())
+        .parse()
+        .unwrap_or_else(|_| -> i32 { 2 });
+
     let mut listener = TcpListener::bind(&server_addr).await?;
     info!("listening on {}", &server_addr);
 
@@ -26,6 +33,20 @@ pub async fn main() -> BoxResult {
 
     Broadcaster::new(tx).spawn();
     handle_connections(&mut listener, tx2).await
+
+            // match server.game_state() {
+        //     ServerState::Playing => {
+        // info!("server is full");
+        // }
+        // ServerState::Idle => {
+        // let server = Arc::clone(&server);
+    // server.inc();
+    //     if server.current_players() == player_amount {
+    //         info!("starting new game");
+    //         // server.start_game();
+    //     }
+    // }
+    // };
 }
 
 fn get_server_addr() -> String {

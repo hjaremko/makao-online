@@ -204,6 +204,24 @@ impl ClientReceiver {
 
             buf.retain(|c| c.is_alphanumeric());
             debug!("got \"{}\"", buf);
+
+                    // server.handle_req(buf);
+
+        // if let Err(e) = stream.write_all(&buf[0..n]).await {
+        //     error!("failed to write to socket; err = {:?}", e);
+        //     return;
+        // }
+        //
+        // match str::from_utf8(&buf[0..n]) {
+        //     Ok(as_utf8) => {
+        //         debug!("[{:?}] wrote {:?}", client_addr, as_utf8);
+        //     }
+        //     Err(e) => {
+        //         debug!("error parsing message, e = {:?}", e);
+        //         stream.shutdown(Shutdown::Both).unwrap();
+        //         return;
+        //     }
+        // };
         }
     }
 }
