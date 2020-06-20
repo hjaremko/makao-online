@@ -1,10 +1,11 @@
 mod network;
 
-use log::info;
-use log::{LevelFilter};
-use std::env;
+use log::{debug, info, trace, LevelFilter};
 use network::process;
+use std::net::SocketAddr::V4;
+use std::{env, thread, time};
 use tokio::net::TcpListener;
+use tokio::sync::broadcast;
 
 #[tokio::main]
 pub async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -17,12 +18,39 @@ pub async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut listener = TcpListener::bind(&server_addr).await?;
     info!("listening on {}", &server_addr);
 
+    let (tx, _) = broadcast::channel(16);
+    let tx2 = tx.clone();
+
+    tokio::spawn(async move {
+        debug!("broadcasting...");
+        let mut i = 0;
+        loop {
+            match tx.send(i) {
+                Ok(_) => {
+                    trace!("broadcast: {}", i);
+                    i += 1;
+                }
+                Err(e) => {
+                    trace!("error broadcasting: {:?}", e);
+                }
+            }
+            thread::sleep(time::Duration::from_millis(1000));
+        }
+    });
+
     loop {
-        let (socket, client_addr) = listener.accept().await?;
+        let (socket, client_add) = listener.accept().await?;
+        let client_addr = match client_add {
+            V4(a) => a,
+            _ => panic!(),
+        };
         info!("[{:?}] connected!", client_addr);
 
+        let tx2 = tx2.clone();
+
         tokio::spawn(async move {
-            process(socket).await;
+            let rx = tx2.subscribe();
+            process(socket, rx).await;
         });
     }
 }
