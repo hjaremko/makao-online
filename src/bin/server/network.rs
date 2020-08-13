@@ -1,90 +1,106 @@
 use log::{debug, error};
-use std::net::SocketAddr::V4;
-use std::net::SocketAddr::V6;
+use std::io::{Error, ErrorKind};
+use std::net::SocketAddr;
 use std::str;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use tokio::net::tcp::{OwnedReadHalf, OwnedWriteHalf};
 use tokio::net::TcpStream;
 use tokio::prelude::*;
 use tokio::sync::broadcast::{Receiver, TryRecvError};
 
-pub async fn process(stream: TcpStream, mut rx: Receiver<i32>) {
-    let mut buf = [0; 1024];
-    let client_addr = match stream.peer_addr() {
-        Ok(V4(addr)) => addr,
-        Ok(V6(_)) => return,
-        Err(e) => {
-            error!("error getting client address, e = {:?}", e);
-            return;
+async fn send_to_client(write_stream: &mut OwnedWriteHalf, message: i32) -> Result<(), Error> {
+    debug!("sending to client: {}", message);
+    write_stream
+        .write_all(format!("{}\n", message).as_ref())
+        .await
+}
+
+async fn try_forward_from_channel(
+    write_stream: &mut OwnedWriteHalf,
+    rx: &mut Receiver<i32>,
+) -> Result<(), Error> {
+    match rx.try_recv() {
+        Ok(message) => send_to_client(write_stream, message).await,
+        Err(e) => match e {
+            TryRecvError::Empty => Ok(()),
+            TryRecvError::Closed => Err(Error::new(ErrorKind::NotConnected, "channel closed")),
+            TryRecvError::Lagged(_) => {
+                debug!("broadcast lagged");
+                rx.try_recv().unwrap();
+                Ok(())
+            }
+        },
+    }
+}
+
+fn spawn_broadcaster(write_str: OwnedWriteHalf, rx: Receiver<i32>, rec_closed: Arc<AtomicBool>) {
+    tokio::spawn(async move {
+        if let Err(e) = forward_broadcast(rx, write_str, rec_closed).await {
+            error!("broadcast thread failed with error: {}", e);
         }
+    });
+}
+
+async fn forward_broadcast(
+    mut rx: Receiver<i32>,
+    mut write_stream: OwnedWriteHalf,
+    not_closed: Arc<AtomicBool>,
+) -> Result<(), Error> {
+    let res: Result<(), Error> = loop {
+        if !not_closed.load(Ordering::Relaxed) {
+            break Ok(());
+        }
+
+        try_forward_from_channel(&mut write_stream, &mut rx).await?;
     };
 
-    debug!("processing {}", client_addr);
+    debug!("ending sending broadcast to client");
+    res
+}
 
-    let (mut read_str, mut write_str) = stream.into_split();
-    let not_closed = Arc::new(AtomicBool::new(true));
-    let rec_closed = not_closed.clone();
-
-    tokio::spawn(async move {
-        while rec_closed.load(Ordering::Relaxed) {
-            match rx.try_recv() {
-                Ok(got) => {
-                    debug!("client received from broadcast: {}", got);
-                    debug!("sending received to client...");
-
-                    if write_str
-                        .write_all(format!("{}\n", got).as_ref())
-                        .await
-                        .is_err()
-                    {
-                        error!("error sending data");
-                        break;
-                    }
-                }
-                Err(e) => match e {
-                    TryRecvError::Empty => {}
-                    TryRecvError::Closed => {
-                        debug!("closed");
-                        break;
-                    }
-                    TryRecvError::Lagged(_) => {
-                        debug!("lagged");
-                        let got = rx.try_recv().unwrap();
-                        debug!("client received from broadcast: {}", got);
-                    }
-                },
-            }
-        }
-
-        debug!("ending listening to broadcast");
-    });
-
+async fn receive_from_client(
+    mut buf: &mut [u8],
+    client_addr: SocketAddr,
+    read_str: &mut OwnedReadHalf,
+) -> Result<(), Error> {
     loop {
-        let n = match read_str.read(&mut buf).await {
-            Ok(n) if n == 0 => return,
-            Ok(n) => n,
-            Err(e) => {
-                error!("failed to read from socket; err = {:?}", e);
-                break;
-            }
-        };
+        // TODO: close gracefully and return Ok(())
+        let n = read_str.read(&mut buf).await?;
+
+        if n == 0 {
+            break Err(Error::new(ErrorKind::InvalidData, "read 0 bytes"));
+        }
 
         debug!("[{}] read {} bytes", client_addr, n);
 
         let mut buf: String = match str::from_utf8(&buf[0..n]) {
             Ok(str) => str.to_string(),
-            Err(_) => {
-                error!("invalid input");
-                break;
+            Err(e) => {
+                break Err(Error::new(ErrorKind::InvalidInput, e));
             }
         };
 
         buf.retain(|c| c.is_alphanumeric());
-        let buf = buf.as_str();
-
         debug!("got {}", buf);
     }
+}
+
+pub async fn handle_client(stream: TcpStream, rx: Receiver<i32>) -> Result<(), Error> {
+    let mut buf = [0; 1024];
+    let client_addr = stream.peer_addr()?;
+
+    debug!("processing {}", client_addr);
+
+    let (mut read_str, write_str) = stream.into_split();
+    let not_closed = Arc::new(AtomicBool::new(true));
+    let rec_closed = not_closed.clone();
+
+    spawn_broadcaster(write_str, rx, rec_closed);
+
+    let res = receive_from_client(&mut buf, client_addr, &mut read_str).await;
 
     not_closed.swap(false, Ordering::Relaxed);
     debug!("connection closed");
+    res
 }

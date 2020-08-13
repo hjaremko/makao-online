@@ -1,7 +1,7 @@
 mod network;
 
-use log::{debug, info, trace, LevelFilter};
-use network::process;
+use log::{debug, error, info, trace, LevelFilter};
+use network::handle_client;
 use std::net::SocketAddr::V4;
 use std::{env, thread, time};
 use tokio::net::TcpListener;
@@ -50,7 +50,9 @@ pub async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         tokio::spawn(async move {
             let rx = tx2.subscribe();
-            process(socket, rx).await;
+            if let Err(e) = handle_client(socket, rx).await {
+                error!("client thread failed with error: {}", e);
+            }
         });
     }
 }
