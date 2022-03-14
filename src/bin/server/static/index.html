@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <title>Makao Online</title>
+</head>
+<body>
+<h1>Makao Online</h1>
+
+<div id="connection-status">
+    <p><em>Please log in</em></p>
+</div>
+
+<form>
+    <input type="text" id="username"/>
+    <input type="password" id="password"/>
+</form>
+<button type="button" id="send">Send</button>
+
+<div id="logs">
+</div>
+
+<div id="game" style="">
+</div>
+<input type="text" id="command"/>
+<button type="button" id="send-command">Send</button>
+
+
+<script type="text/javascript">
+    const status = document.getElementById('connection-status');
+    const logs = document.getElementById('logs');
+    const username = document.getElementById('username');
+    const password = document.getElementById('password');
+    let send = document.getElementById('send');
+    // const uri = 'ws://' + location.host + '/chat';
+    // const ws = new WebSocket(uri);
+    // let ws;
+
+    function message(data) {
+        const line = document.createElement('p');
+        line.innerText = data;
+        logs.appendChild(line);
+    }
+
+    function setStatus(data) {
+        status.innerHTML = '<p><em>' + data + '</em></p>';
+    }
+
+
+    send.onclick = function () {
+        const login = username.value;
+        const pass = password.value;
+        // ws.send(msg);
+        // text.value = '';
+        //
+        message('Logging in...: ' + login + ' ' + pass);
+
+        fetch("/login/:" + login + "/:" + pass, {
+            method: "POST",
+            headers: {'Content-Type': 'application/json'},
+        }).then(res => {
+            setStatus("Logged in");
+            return res.json()
+        }).then(data => {
+            console.log(data);
+            message(data.token);
+
+            const uri = 'ws://' + location.host + '/join';
+            const ws = new WebSocket(uri);
+
+            ws.onopen = function () {
+                status.innerHTML = '<p><em>Connected!</em></p>';
+            };
+
+            ws.onmessage = function (msg) {
+                console.log("Got: " + msg);
+                message(msg.data);
+            };
+
+            ws.onclose = function () {
+                status.getElementsByTagName('em')[0].innerText = 'Disconnected!';
+            };
+
+            let sendCommand = document.getElementById('send-command');
+            sendCommand.onclick = function () {
+                const command = document.getElementById('command');
+                console.log(command.value);
+                ws.send(command.value);
+                message('You: ' + command.value);
+                command.value = '';
+            };
+
+        })
+        ;
+    };
+</script>
+</body>
+</html>

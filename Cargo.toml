@@ -2,15 +2,21 @@
 name = "makao-online"
 version = "0.1.0"
 authors = ["Hubert Jaremko <hjaremko@outlook.com>"]
-edition = "2018"
+edition = "2021"
 
 [dependencies]
 log = { version = "0.4", features = ["max_level_debug", "release_max_level_info"] }
 termcolor = "1.1"
-tokio = { version = "0.2", features = ["full"] }
+tokio = { version = "1", features = ["full"] }
+tokio-stream = "0.1"
+warp = "0.3"
+serde = "1"
+serde_derive = "1"
+serde_json = "1"
+futures-util = "0.3"
 
 [lib]
 name = "logger"
 path = "src/logger.rs"
-edition = "2018"
+edition = "2021"
 crate-type = ["lib"]
